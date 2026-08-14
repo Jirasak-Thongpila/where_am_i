@@ -7,8 +7,8 @@ export async function GET() {
         const result = await db.select().from(users);
         return NextResponse.json({
             message: "database connection success",
-            data: result,
-            users: result
+            users: result,
+            
         }, {
             status: 200
         });
