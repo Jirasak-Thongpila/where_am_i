@@ -15,6 +15,13 @@
       "when": 1786718378004,
       "tag": "0001_lean_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786891502113,
+      "tag": "0002_shallow_darkhawk",
+      "breakpoints": true
     }
   ]
 }
