@@ -5,93 +5,119 @@ import { NextResponse } from "next/server";
 import argon2 from "argon2";
 import { signJWT } from "@/lib/jwt";
 
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { email, name, password } = body;
 
-export async function POST(request: Request) {
-    try {
-
-        const body = await request.json();
-        const { email, name, password } = body;
-
-
-        if (!email || !name || !password) {
-            return NextResponse.json({
-                message: "email and username and password are required",
-
-            }, {
-
-                status: 400
-            })
-        }
-
-        const normalizedEmail = email.toLowerCase().trim();
-
-        const sskruEmailRegex = /^[^\s@]+@sskru\.ac\.th$/;
-
-        if (!sskruEmailRegex.test(normalizedEmail)) {
-            return NextResponse.json({
-
-                message: "Only @sskru.ac.th email addresses are allowed",
-            }, {
-                status: 400
-            })
-        }
-
-        const expiresInUser = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, normalizedEmail))
-        .limit(1);
-
-        if (expiresInUser.length > 0) {
-            return NextResponse.json({
-                message: "email already exists",
-            }, {
-                status: 409
-            })
-        }
-
-        const hashPassword = await argon2.hash(password);
-
-        const newUser = await db.insert(users).values({
-            email: normalizedEmail,
-            name,
-            password: hashPassword,
-        }).returning();
-
-        const jwtToken = await signJWT({
-            id: newUser[0].id,
-            email: newUser[0].email,
-            name: newUser[0].name
-        });
-
-        const { password: _, ...userWithoutPassword } = newUser[0];
-
-        const response = NextResponse.json({
-            message: "User created successfully",
-            user: userWithoutPassword,
-            token: jwtToken,
-        }, {
-            status: 201
-        })
-
-        response.cookies.set({
-            name: "auth-token",
-            value: jwtToken,
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 60 * 60 * 24 * 7,
-            path: "/",
-        })
-
-        return response;
-
-    } catch (error) {
-        console.error(error);
-        return NextResponse.json({
-            message: "Failed to register",
-        }, {
-            status: 500
-        })
+    if (
+      typeof email !== "string" ||
+      typeof name !== "string" ||
+      typeof password !== "string" ||
+      !email.trim() ||
+      !name.trim() ||
+      !password.trim()
+    ) {
+      return NextResponse.json(
+        {
+          message: "email and name and password are required",
+        },
+        {
+          status: 400,
+        },
+      );
     }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const sskruEmailRegex: RegExp = /^[^\s@]+@sskru\.ac\.th$/;
+
+    if (!sskruEmailRegex.test(normalizedEmail)) {
+      return NextResponse.json(
+        {
+          message: "Only @sskru.ac.th email addresses are allowed",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const existingUser = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1);
+
+    if (existingUser.length > 0) {
+      return NextResponse.json(
+        {
+          message: "email already exists",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
+    const hashPassword = await argon2.hash(password);
+
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: normalizedEmail,
+        name: name.trim(),
+        password: hashPassword,
+      })
+      .returning({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        bio: users.bio,
+        profileImage: users.profileImage,
+        coverImage: users.coverImage,
+        socialLinks: users.socialLinks,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      });
+
+    const jwtToken = await signJWT({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    });
+
+    const response = NextResponse.json(
+      {
+        message: "User created successfully",
+        user: user,
+        token: jwtToken,
+      },
+      {
+        status: 201,
+      },
+    );
+
+    response.cookies.set({
+      name: "auth-token",
+      value: jwtToken,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+
+    return response;
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json(
+      {
+        message: "Failed to register",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
 }
