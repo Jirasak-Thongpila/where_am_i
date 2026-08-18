@@ -28,11 +28,12 @@ export async function POST(request: Request) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    const sskruEmailRegex: RegExp = /^[^\s@]+@sskru\.ac\.th$/;
-    if (!sskruEmailRegex.test(normalizedEmail)) {
+    // Validate email format (accepts all valid domains)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail) || normalizedEmail.length > 255) {
       return NextResponse.json(
         {
-          message: "Only @sskru.ac.th email addresses are allowed",
+          message: "Please provide a valid email address",
         },
         {
           status: 400,
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
         profileImage: users.profileImage,
         coverImage: users.coverImage,
         socialLinks: users.socialLinks,
+        isVerified: users.isVerified,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       })
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
           profileImage: user.profileImage,
           coverImage: user.coverImage,
           socialLinks: user.socialLinks,
+          isVerified: user.isVerified,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },

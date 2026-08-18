@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
         profileImage: users.profileImage,
         coverImage: users.coverImage,
         socialLinks: users.socialLinks,
+        isVerified: users.isVerified,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       })

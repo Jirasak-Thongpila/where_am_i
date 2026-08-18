@@ -1,9 +1,9 @@
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { users, verificationTokens } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import argon2 from "argon2";
-import { signJWT } from "@/lib/jwt";
+import { sendOtpEmail } from "@/lib/mail";
 
 export async function POST(req: Request) {
   try {
@@ -32,11 +32,12 @@ export async function POST(req: Request) {
 
     const normalizedEmail = email.toLowerCase().trim();
 
-    const sskruEmailRegex: RegExp = /^[^\s@]+@sskru\.ac\.th$/;
-    if (!sskruEmailRegex.test(normalizedEmail)) {
+    // Validate email format (accepts any valid email domain)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail) || normalizedEmail.length > 255) {
       return NextResponse.json(
         {
-          message: "Only @sskru.ac.th email addresses are allowed",
+          message: "Please provide a valid email address",
         },
         {
           status: 400,
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     }
 
     const existingUser = await db
-      .select({ id: users.id })
+      .select({ id: users.id, isVerified: users.isVerified })
       .from(users)
       .where(eq(users.email, normalizedEmail))
       .limit(1);
@@ -74,12 +75,14 @@ export async function POST(req: Request) {
 
     const hashPassword = await argon2.hash(password);
 
+    // 1. Create user with isVerified = false
     const [user] = await db
       .insert(users)
       .values({
         email: normalizedEmail,
         name: displayName,
         password: hashPassword,
+        isVerified: false,
       })
       .returning({
         id: users.id,
@@ -89,38 +92,50 @@ export async function POST(req: Request) {
         profileImage: users.profileImage,
         coverImage: users.coverImage,
         socialLinks: users.socialLinks,
+        isVerified: users.isVerified,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
       });
 
-    const jwtToken = await signJWT({
-      id: user.id,
-      email: user.email,
-      name: user.name,
+    // 2. Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes expiration
+
+    // Clean up any old tokens for this email
+    await db
+      .delete(verificationTokens)
+      .where(eq(verificationTokens.email, normalizedEmail));
+
+    // Save token to DB
+    await db.insert(verificationTokens).values({
+      email: normalizedEmail,
+      otp: otp,
+      expiresAt: expiresAt,
     });
 
-    const response = NextResponse.json(
+    // 3. Send email with Resend
+    try {
+      await sendOtpEmail(normalizedEmail, otp);
+    } catch (mailError) {
+      console.error("Failed to send OTP email via Resend:", mailError);
+      // We don't fail registration completely if Resend key is missing/testing, but log it
+    }
+
+    return NextResponse.json(
       {
-        message: "User created successfully",
-        user: user,
-        token: jwtToken,
+        message: "User registered successfully. Please verify your email with the OTP sent to your inbox.",
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          isVerified: user.isVerified,
+        },
+        requiresVerification: true,
       },
       {
         status: 201,
       },
     );
-
-    response.cookies.set({
-      name: "auth-token",
-      value: jwtToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
-      path: "/",
-    });
-
-    return response;
   } catch (error) {
     console.error("Register error:", error);
     return NextResponse.json(
