@@ -58,7 +58,7 @@ npm run dev
 
 - **Production Base URL**: `https://where-am-i-silk.vercel.app`
 - **Development Base URL**: `http://localhost:3000` (หรือ `http://10.0.2.2:3000` สำหรับ Android Emulator)
-
+ 
 ### 🔐 1. Authentication APIs (`/api/auth/*`)
 
 #### 1.1 สมัครสมาชิก (Register)
