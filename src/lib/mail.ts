@@ -1,11 +1,20 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-export const resend = new Resend(process.env.RESEND_API_KEY);
+const gmailUser = process.env.GMAIL_USER || "tle0613828245@gmail.com";
+const gmailPass = process.env.GMAIL_APP_PASSWORD || "rkmbrwefeqegpsmw";
+
+export const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: gmailUser,
+    pass: gmailPass,
+  },
+});
 
 export async function sendOtpEmail(to: string, otp: string) {
-  const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
+  const from = process.env.EMAIL_FROM || `"Where Am I" <${gmailUser}>`;
 
-  return await resend.emails.send({
+  return await transporter.sendMail({
     from: from,
     to: to,
     subject: `รหัสยืนยันอีเมลของคุณ: ${otp}`,
@@ -16,7 +25,7 @@ export async function sendOtpEmail(to: string, otp: string) {
           ขอบคุณที่สมัครใช้งานระบบ Where Am I<br/>กรุณาใช้รหัส OTP ด้านล่างนี้เพื่อยืนยันบัญชีของคุณ:
         </p>
         <div style="text-align: center; margin: 32px 0;">
-          <span style="display: inline-block; font-size: 36px; font-weight: 700; letter-spacing: 8px; padding: 14px 28px; background-color: #f3f4f6; border-radius: 10px; color: #1f2937; border: 1px solid #e5e7eb;">
+          <span style="display: inline-block; font-size: 36px; font-weight: 700; letter-spacing: 8px; padding: 14px 28px; background-color: #f3f4f6; border-radius: 10px; color: #10B981; border: 1px solid #e5e7eb;">
             ${otp}
           </span>
         </div>
