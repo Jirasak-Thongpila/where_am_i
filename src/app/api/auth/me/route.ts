@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthUser } from "@/lib/auth";
-import { users } from "@/db/schema";
+import { checkins, users, verificationTokens } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { uploadToGCS } from "@/lib/gcs";
+import { deleteFromGCS, uploadToGCS } from "@/lib/gcs";
 
 export async function GET(request: NextRequest) {
   try {
@@ -123,6 +123,11 @@ export async function PUT(request: NextRequest) {
         const ext = imageFile.name ? imageFile.name.split(".").pop() || "jpg" : "jpg";
         const filename = `profiles/${payload.id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
         profileImageUrl = await uploadToGCS(buffer, filename, imageFile.type || "image/jpeg");
+
+        // Delete previous avatar from GCS
+        if (existingUser.profileImage) {
+          await deleteFromGCS(existingUser.profileImage);
+        }
       }
     } else {
       const body = await request.json();
@@ -169,6 +174,83 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(
       {
         message: "Failed to update profile",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const payload = await getAuthUser(request);
+    if (!payload || !payload.id) {
+      return NextResponse.json(
+        {
+          message: "Unauthorized",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, payload.id))
+      .limit(1);
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          message: "User not found",
+        },
+        {
+          status: 404,
+        },
+      );
+    }
+
+    // 1. Delete all user checkin images from GCS
+    const userCheckins = await db
+      .select({ id: checkins.id, imageUrl: checkins.imageUrl })
+      .from(checkins)
+      .where(eq(checkins.userId, payload.id));
+
+    for (const c of userCheckins) {
+      if (c.imageUrl) {
+        await deleteFromGCS(c.imageUrl);
+      }
+    }
+
+    // 2. Delete user profile & cover images from GCS
+    if (user.profileImage) {
+      await deleteFromGCS(user.profileImage);
+    }
+    if (user.coverImage) {
+      await deleteFromGCS(user.coverImage);
+    }
+
+    // 3. Delete DB records
+    await db.delete(checkins).where(eq(checkins.userId, payload.id));
+    await db.delete(verificationTokens).where(eq(verificationTokens.email, user.email));
+    await db.delete(users).where(eq(users.id, payload.id));
+
+    return NextResponse.json(
+      {
+        message: "Account and all associated data deleted successfully",
+      },
+      {
+        status: 200,
+      },
+    );
+  } catch (error) {
+    console.error("Delete account error:", error);
+    return NextResponse.json(
+      {
+        message: "Failed to delete account",
       },
       {
         status: 500,

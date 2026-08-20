@@ -1,17 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { checkins, users } from "@/db/schema";
-import { and, desc, eq } from "drizzle-orm";
 import { getAuthUser } from "@/lib/auth";
-import { uploadToGCS } from "@/lib/gcs";
+import { deleteFromGCS, uploadToGCS } from "@/lib/gcs";
+import { and, desc, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
     const payload = await getAuthUser(request);
-    if (!payload) {
+    if (!payload || !payload.id) {
       return NextResponse.json(
         {
-          message: "Invalid token",
+          message: "Unauthorized",
         },
         {
           status: 401,
@@ -19,53 +19,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await db
-      .select({
-        id: users.id,
-      })
-      .from(users)
-      .where(eq(users.id, payload.id))
-      .limit(1);
-
-    if (!user || user.length === 0) {
-      return NextResponse.json(
-        {
-          message: "User not found",
-        },
-        {
-          status: 404,
-        },
-      );
-    }
-
     const contentType = (request.headers.get("content-type") || "").toLowerCase();
-
-    let lat: number | undefined;
-    let lng: number | undefined;
-    let locationName: string | null = null;
-    let address: string | null = null;
-    let accuracy: number | null = null;
-    let description: string | null = null;
-    let imageUrl: string | null = null;
+    let lat: number = 0;
+    let lng: number = 0;
+    let locationName: string | undefined;
+    let address: string | undefined;
+    let accuracy: number | undefined;
+    let description: string | undefined;
+    let imageUrl: string | undefined;
 
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
-
       const latRaw = formData.get("lat");
       const lngRaw = formData.get("lng");
-      lat = latRaw !== null && latRaw !== "" ? parseFloat(latRaw.toString()) : NaN;
-      lng = lngRaw !== null && lngRaw !== "" ? parseFloat(lngRaw.toString()) : NaN;
+      lat = latRaw ? parseFloat(latRaw.toString()) : 0;
+      lng = lngRaw ? parseFloat(lngRaw.toString()) : 0;
 
-      const accuracyRaw = formData.get("accuracy");
-      accuracy =
-        accuracyRaw !== null && accuracyRaw !== ""
-          ? parseFloat(accuracyRaw.toString())
-          : null;
-
-      locationName = formData.get("locationName")?.toString() || null;
-      address = formData.get("address")?.toString() || null;
-      description = formData.get("description")?.toString() || null;
-      imageUrl = formData.get("imageUrl")?.toString() || null;
+      locationName = formData.get("locationName")?.toString();
+      address = formData.get("address")?.toString();
+      const accRaw = formData.get("accuracy");
+      accuracy = accRaw ? parseFloat(accRaw.toString()) : undefined;
+      description = formData.get("description")?.toString();
 
       const imageFile = (formData.get("image") ||
         formData.get("file") ||
@@ -76,36 +50,24 @@ export async function POST(request: NextRequest) {
         const arrayBuffer = await imageFile.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const ext = imageFile.name ? imageFile.name.split(".").pop() || "jpg" : "jpg";
-        const filename = `checkins/${user[0].id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+        const filename = `checkins/${payload.id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
         imageUrl = await uploadToGCS(buffer, filename, imageFile.type || "image/jpeg");
       }
     } else {
       const body = await request.json();
-      lat = typeof body.lat === "number" ? body.lat : parseFloat(body.lat);
-      lng = typeof body.lng === "number" ? body.lng : parseFloat(body.lng);
-      accuracy =
-        body.accuracy !== undefined && body.accuracy !== null
-          ? typeof body.accuracy === "number"
-            ? body.accuracy
-            : parseFloat(body.accuracy)
-          : null;
-      locationName = body.locationName || null;
-      address = body.address || null;
-      description = body.description || null;
-      imageUrl = body.imageUrl || null;
+      lat = typeof body.lat === "number" ? body.lat : parseFloat(body.lat || "0");
+      lng = typeof body.lng === "number" ? body.lng : parseFloat(body.lng || "0");
+      locationName = body.locationName;
+      address = body.address;
+      accuracy = body.accuracy ? parseFloat(body.accuracy.toString()) : undefined;
+      description = body.description;
+      imageUrl = body.imageUrl;
     }
 
-    if (
-      lat === undefined ||
-      lng === undefined ||
-      typeof lat !== "number" ||
-      typeof lng !== "number" ||
-      Number.isNaN(lat) ||
-      Number.isNaN(lng)
-    ) {
+    if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
       return NextResponse.json(
         {
-          message: "Missing or invalid coordinates",
+          message: "Valid latitude and longitude are required",
         },
         {
           status: 400,
@@ -113,31 +75,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [checkin] = await db
+    const [newCheckin] = await db
       .insert(checkins)
       .values({
-        userId: user[0].id,
-        lat: lat,
-        lng: lng,
-        locationName: locationName,
-        address: address,
-        accuracy: accuracy,
-        description: description,
-        imageUrl: imageUrl,
+        userId: payload.id,
+        lat,
+        lng,
+        locationName,
+        address,
+        accuracy,
+        description,
+        imageUrl,
       })
       .returning();
 
     return NextResponse.json(
       {
         message: "Check-in created successfully",
-        checkin: checkin,
+        checkin: newCheckin,
       },
       {
         status: 201,
       },
     );
   } catch (error) {
-    console.error("Check-in error:", error);
+    console.error("Create check-in error:", error);
     return NextResponse.json(
       {
         message: "Failed to create check-in",
@@ -153,7 +115,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const isOnlyMine = searchParams.get("my") === "true";
-    const limit = parseInt(searchParams.get("limit") || "100", 10);
+    const limit = parseInt(searchParams.get("limit") || "200", 10);
 
     let targetUserId: number | undefined;
     if (isOnlyMine) {
@@ -161,7 +123,7 @@ export async function GET(request: NextRequest) {
       if (!payload) {
         return NextResponse.json(
           {
-            message: "Invalid token",
+            message: "Unauthorized",
           },
           {
             status: 401,
@@ -193,7 +155,7 @@ export async function GET(request: NextRequest) {
       .where(targetUserId ? eq(checkins.userId, targetUserId) : undefined)
       .orderBy(desc(checkins.createdAt))
       .limit(limit);
-    // ส่ง checkinList กลับไปได้เลย (ถ้าไม่มีข้อมูล จะได้ [] กลับไปแบบ 200 OK)
+
     return NextResponse.json(
       {
         message: "Check-ins retrieved successfully",
@@ -204,7 +166,7 @@ export async function GET(request: NextRequest) {
       },
     );
   } catch (error) {
-    console.error(error);
+    console.error("Get check-ins error:", error);
     return NextResponse.json(
       {
         message: "Failed to retrieve check-ins",
@@ -215,10 +177,11 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
 export async function PUT(request: NextRequest) {
   try {
     const payload = await getAuthUser(request);
-    if (!payload) {
+    if (!payload || !payload.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
@@ -253,34 +216,22 @@ export async function PUT(request: NextRequest) {
         formData.get("photo") ||
         formData.get("picture")) as File | null;
 
-      if (
-        imageFile &&
-        typeof imageFile === "object" &&
-        "arrayBuffer" in imageFile &&
-        imageFile.size > 0
-      ) {
+      if (imageFile && typeof imageFile === "object" && "arrayBuffer" in imageFile && imageFile.size > 0) {
         const arrayBuffer = await imageFile.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const ext = imageFile.name
-          ? imageFile.name.split(".").pop() || "jpg"
-          : "jpg";
+        const ext = imageFile.name ? imageFile.name.split(".").pop() || "jpg" : "jpg";
         const filename = `checkins/${payload.id}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
-        imageUrl = await uploadToGCS(
-          buffer,
-          filename,
-          imageFile.type || "image/jpeg",
-        );
+        imageUrl = await uploadToGCS(buffer, filename, imageFile.type || "image/jpeg");
       }
     } else {
       const body = await request.json();
-      id = body.id;
+      id = typeof body.id === "number" ? body.id : parseInt(body.id, 10);
       description = body.description;
       imageUrl = body.imageUrl;
       locationName = body.locationName;
       address = body.address;
     }
 
-    // 1. ตรวจสอบว่าส่ง ID ของ Check-in มาไหม
     if (!id || typeof id !== "number" || Number.isNaN(id)) {
       return NextResponse.json(
         { message: "Check-in ID is required and must be a number" },
@@ -288,25 +239,31 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 2. ตรวจสอบว่า Check-in นี้มีอยู่จริง และเป็นของ User คนนี้หรือไม่
     const [existingCheckin] = await db
       .select()
       .from(checkins)
       .where(eq(checkins.id, id))
       .limit(1);
+
     if (!existingCheckin) {
       return NextResponse.json(
         { message: "Check-in not found" },
         { status: 404 },
       );
     }
+
     if (existingCheckin.userId !== payload.id) {
       return NextResponse.json(
         { message: "Forbidden: You cannot edit another user's check-in" },
         { status: 403 },
       );
     }
-    // 4. ทำการ Update เฉพาะฟิลด์ที่ส่งมา
+
+    // If new image uploaded, delete previous image from GCS
+    if (imageUrl && existingCheckin.imageUrl && existingCheckin.imageUrl !== imageUrl) {
+      await deleteFromGCS(existingCheckin.imageUrl);
+    }
+
     const [updatedCheckin] = await db
       .update(checkins)
       .set({
@@ -314,76 +271,86 @@ export async function PUT(request: NextRequest) {
         imageUrl: imageUrl !== undefined ? imageUrl : existingCheckin.imageUrl,
         locationName: locationName !== undefined ? locationName : existingCheckin.locationName,
         address: address !== undefined ? address : existingCheckin.address,
-        updatedAt: new Date(), // อัปเดต timestamp
+        updatedAt: new Date(),
       })
       .where(and(eq(checkins.id, id), eq(checkins.userId, payload.id)))
       .returning();
+
     return NextResponse.json(
       {
         message: "Check-in updated successfully",
         checkin: updatedCheckin,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Update check-in error:", error);
     return NextResponse.json(
       { message: "Failed to update check-in" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
+
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const idParam = searchParams.get("id");
     const id = idParam ? parseInt(idParam, 10) : NaN;
 
-    // 1. ตรวจสอบว่าส่ง ID ของ Check-in มาไหม
     if (Number.isNaN(id) || id <= 0) {
       return NextResponse.json(
         { message: "Check-in ID is required and must be a valid number" },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    // 2. ตรวจสอบ Auth Token
+
     const payload = await getAuthUser(request);
-    if (!payload) {
+    if (!payload || !payload.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-    // 3. ตรวจสอบว่า Check-in นี้มีอยู่จริง และเป็นของ User คนนี้หรือไม่
+
     const [existingCheckin] = await db
       .select()
       .from(checkins)
       .where(eq(checkins.id, id))
       .limit(1);
+
     if (!existingCheckin) {
       return NextResponse.json(
         { message: "Check-in not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
+
     if (existingCheckin.userId !== payload.id) {
       return NextResponse.json(
         { message: "Forbidden: You cannot delete another user's check-in" },
-        { status: 403 }
+        { status: 403 },
       );
     }
-    // 4. ทำการ Delete
+
+    // Delete image from GCS
+    if (existingCheckin.imageUrl) {
+      await deleteFromGCS(existingCheckin.imageUrl);
+    }
+
+    // Delete record from DB
     await db
       .delete(checkins)
       .where(and(eq(checkins.id, id), eq(checkins.userId, payload.id)));
+
     return NextResponse.json(
       {
         message: "Check-in deleted successfully",
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Delete check-in error:", error);
     return NextResponse.json(
       { message: "Failed to delete check-in" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
