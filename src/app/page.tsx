@@ -137,6 +137,54 @@ const endpoints: Endpoint[] = [
     ),
   },
   {
+    method: "POST",
+    path: "/api/auth/forgot-password",
+    category: "auth",
+    title: "Forgot Password (Request OTP)",
+    description: "ขอรหัส OTP 6 หลัก สำหรับการรีเซ็ตรหัสผ่านทางอีเมล",
+    authRequired: false,
+    contentType: "application/json",
+    requestBody: JSON.stringify(
+      {
+        email: "somchai@example.com",
+      },
+      null,
+      2,
+    ),
+    responseBody: JSON.stringify(
+      {
+        message: "ส่งรหัส OTP สำหรับรีเซ็ตรหัสผ่านไปยังอีเมลของคุณเรียบร้อยแล้ว",
+      },
+      null,
+      2,
+    ),
+  },
+  {
+    method: "POST",
+    path: "/api/auth/reset-password",
+    category: "auth",
+    title: "Reset Password with OTP",
+    description: "รีเซ็ตรหัสผ่านใหม่โดยใช้รหัส OTP ที่ได้รับทางอีเมล",
+    authRequired: false,
+    contentType: "application/json",
+    requestBody: JSON.stringify(
+      {
+        email: "somchai@example.com",
+        otp: "839201",
+        newPassword: "newpassword5678",
+      },
+      null,
+      2,
+    ),
+    responseBody: JSON.stringify(
+      {
+        message: "รีเซ็ตรหัสผ่านใหม่เรียบร้อยแล้ว สามารถเข้าสู่ระบบด้วยรหัสผ่านใหม่ได้ทันที",
+      },
+      null,
+      2,
+    ),
+  },
+  {
     method: "GET",
     path: "/api/auth/me",
     category: "auth",
@@ -150,9 +198,38 @@ const endpoints: Endpoint[] = [
           id: 1,
           email: "somchai@example.com",
           name: "Somchai Jaidee",
-          bio: null,
-          profileImage: null,
+          bio: "นักเดินทางและช่างภาพ",
+          profileImage: "https://storage.googleapis.com/where_am_i/profiles/1_1787058244392_8f9g12.jpg",
           coverImage: null,
+          isVerified: true,
+          createdAt: "2026-08-18T10:00:00.000Z",
+          updatedAt: "2026-08-18T12:30:00.000Z",
+        },
+      },
+      null,
+      2,
+    ),
+  },
+  {
+    method: "PUT",
+    path: "/api/auth/me",
+    category: "auth",
+    title: "Update Profile & Avatar",
+    description: "อัปเดตข้อมูลโปรไฟล์และอัปโหลดรูป Avatar ขึ้น GCS (พร้อมระบบลบรูปเดิมอัตโนมัติ)",
+    authRequired: true,
+    contentType: "multipart/form-data or application/json",
+    requestBody: `name: "Somchai Jaidee (Updated)"
+bio: "สวัสดีครับ ผมชอบเที่ยวถ่ายรูป"
+image: [File (.jpg, .png, .webp)]`,
+    responseBody: JSON.stringify(
+      {
+        message: "Profile updated successfully",
+        user: {
+          id: 1,
+          email: "somchai@example.com",
+          name: "Somchai Jaidee (Updated)",
+          bio: "สวัสดีครับ ผมชอบเที่ยวถ่ายรูป",
+          profileImage: "https://storage.googleapis.com/where_am_i/profiles/1_1787069123456_a1b2c3.jpg",
           isVerified: true,
         },
       },
@@ -184,6 +261,21 @@ const endpoints: Endpoint[] = [
           email: "somchai@example.com",
           name: "Somchai Jaidee",
         },
+      },
+      null,
+      2,
+    ),
+  },
+  {
+    method: "DELETE",
+    path: "/api/auth/me",
+    category: "auth",
+    title: "Delete Account",
+    description: "ลบบัญชีผู้ใช้ถาวร พร้อมลบข้อมูลเช็คอินและรูปภาพทั้งหมดใน GCS ของผู้ใช้นี้",
+    authRequired: true,
+    responseBody: JSON.stringify(
+      {
+        message: "Account and all associated data deleted successfully",
       },
       null,
       2,
