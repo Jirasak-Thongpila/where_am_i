@@ -14,7 +14,6 @@ import {
   Trash2,
   Lock,
   LogOut,
-  Sparkles,
   CheckCircle2,
   AlertCircle,
   Eye,
@@ -149,7 +148,6 @@ export default function AdminPage() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
-  const [seedLoading, setSeedLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<{
     text: string;
     type: "success" | "error" | "info";
@@ -297,35 +295,6 @@ export default function AdminPage() {
       setLoginError(message);
     } finally {
       setLoginLoading(false);
-    }
-  };
-
-  // Seed Default Admin Account
-  const handleSeedAdmin = async () => {
-    setSeedLoading(true);
-    try {
-      const res = await fetch("/api/admin/seed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setLoginEmail("admin@whereami.local");
-        setLoginPassword("AdminPassword123!");
-        showToast(
-          "Admin account created! Credentials auto-filled. Click 'Sign In' to proceed.",
-          "success"
-        );
-      } else {
-        throw new Error(data.message || "Failed to seed admin");
-      }
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create default admin";
-      showToast(message, "error");
-    } finally {
-      setSeedLoading(false);
     }
   };
 
@@ -592,32 +561,6 @@ export default function AdminPage() {
                 )}
               </Button>
             </form>
-
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
-                  Quick Setup
-                </span>
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleSeedAdmin}
-              disabled={seedLoading}
-              className="w-full border-dashed border-primary/40 hover:bg-primary/5 text-primary text-xs h-9"
-            >
-              {seedLoading ? (
-                <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" />
-              ) : (
-                <Sparkles className="w-3.5 h-3.5 mr-2" />
-              )}
-              Seed & Auto-fill Default Admin Account
-            </Button>
 
             <div className="text-center pt-2">
               <Link
