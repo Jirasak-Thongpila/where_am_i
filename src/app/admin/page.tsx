@@ -199,6 +199,8 @@ export default function AdminPage() {
   const [previewImage, setPreviewImage] = useState<CheckinItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CheckinItem | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteUserTarget, setDeleteUserTarget] = useState<UserListItem | null>(null);
+  const [deleteUserLoading, setDeleteUserLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   // Toast Helper
@@ -453,6 +455,53 @@ export default function AdminPage() {
       showToast(message, "error");
     } finally {
       setActionLoadingId(null);
+    }
+  };
+
+  // Handle Delete User
+  const handleDeleteUser = async () => {
+    if (!deleteUserTarget) return;
+    setDeleteUserLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users?id=${deleteUserTarget.id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setUsersList((prev) =>
+          prev.filter((u) => u.id !== deleteUserTarget.id)
+        );
+        setRecentUsers((prev) =>
+          prev.filter((u) => u.id !== deleteUserTarget.id)
+        );
+        if (stats) {
+          setStats({
+            ...stats,
+            totalUsers: Math.max(0, stats.totalUsers - 1),
+            verifiedUsers: deleteUserTarget.isVerified
+              ? Math.max(0, stats.verifiedUsers - 1)
+              : stats.verifiedUsers,
+            adminUsers:
+              deleteUserTarget.role === "admin"
+                ? Math.max(0, stats.adminUsers - 1)
+                : stats.adminUsers,
+          });
+        }
+        showToast(
+          `User ${deleteUserTarget.name} and associated data deleted`,
+          "success"
+        );
+        setDeleteUserTarget(null);
+        loadDashboardData();
+      } else {
+        const data = await res.json();
+        throw new Error(data.message || "Failed to delete user");
+      }
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete user";
+      showToast(message, "error");
+    } finally {
+      setDeleteUserLoading(false);
     }
   };
 
@@ -1505,6 +1554,25 @@ export default function AdminPage() {
                             >
                               {u.isVerified ? "Unverify" : "Verify"}
                             </Button>
+
+                            {/* Delete User Button */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDeleteUserTarget(u)}
+                              disabled={
+                                actionLoadingId === u.id ||
+                                u.id === currentUser.id
+                              }
+                              title={
+                                u.id === currentUser.id
+                                  ? "You cannot delete your own account"
+                                  : "Delete user account and all check-ins"
+                              }
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1785,6 +1853,63 @@ export default function AdminPage() {
                   </>
                 ) : (
                   "Confirm Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* MODAL 3: Delete User Confirmation */}
+      <Dialog
+        open={Boolean(deleteUserTarget)}
+        onOpenChange={(open) => !open && setDeleteUserTarget(null)}
+      >
+        {deleteUserTarget && (
+          <DialogContent
+            className="max-w-md"
+            onClose={() => setDeleteUserTarget(null)}
+          >
+            <DialogHeader>
+              <div className="w-10 h-10 rounded-full bg-destructive/10 text-destructive flex items-center justify-center mb-2">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <DialogTitle>Delete User Account?</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to permanently delete user{" "}
+                <strong className="text-foreground">
+                  {deleteUserTarget.name}
+                </strong>{" "}
+                ({deleteUserTarget.email})?
+                <span className="block mt-2 text-destructive font-medium">
+                  ⚠️ This action will permanently remove all their check-in
+                  logs, photos on Cloud Storage, and authentication records.
+                </span>
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDeleteUserTarget(null)}
+                disabled={deleteUserLoading}
+                className="cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteUser}
+                disabled={deleteUserLoading}
+                className="cursor-pointer"
+              >
+                {deleteUserLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 mr-2 animate-spin" />
+                    Deleting User...
+                  </>
+                ) : (
+                  "Confirm Delete User"
                 )}
               </Button>
             </DialogFooter>
