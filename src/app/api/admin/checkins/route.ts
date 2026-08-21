@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { checkins, users } from "@/db/schema";
 import { deleteFromGCS } from "@/lib/gcs";
 import { count, desc, eq, ilike, or } from "drizzle-orm";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
   try {
@@ -139,6 +140,16 @@ export async function DELETE(request: NextRequest) {
 
     // Delete check-in record
     await db.delete(checkins).where(eq(checkins.id, id));
+
+    // Log activity
+    await logActivity({
+      userId: admin.id,
+      action: "ADMIN_DELETE_CHECKIN",
+      entityType: "checkin",
+      entityId: id,
+      details: `Admin ${admin.name} deleted check-in #${id} (${existing.locationName || `${existing.lat}, ${existing.lng}`})`,
+      request,
+    });
 
     return NextResponse.json(
       {

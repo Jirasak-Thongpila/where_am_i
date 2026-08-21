@@ -3,6 +3,7 @@ import { getAdminUser } from "@/lib/auth";
 import { db } from "@/db";
 import { checkins, users } from "@/db/schema";
 import { count, desc, eq, ilike, or } from "drizzle-orm";
+import { logActivity } from "@/lib/activity";
 
 export async function GET(request: NextRequest) {
   try {
@@ -131,6 +132,18 @@ export async function PATCH(request: NextRequest) {
     if (!updatedUser) {
       return NextResponse.json({ message: "User not found" }, { status: 404 });
     }
+
+    // Log activity
+    await logActivity({
+      userId: admin.id,
+      action: "ADMIN_UPDATE_USER",
+      entityType: "admin",
+      entityId: updatedUser.id,
+      details: `Admin ${admin.name} updated user #${updatedUser.id} (${updatedUser.name}): ${
+        role !== undefined ? `role=${role} ` : ""
+      }${isVerified !== undefined ? `verified=${isVerified}` : ""}`,
+      request,
+    });
 
     return NextResponse.json(
       {

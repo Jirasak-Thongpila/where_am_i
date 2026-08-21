@@ -60,3 +60,24 @@ export const checkins = pgTable(
   ],
 );
 
+export const activityLogs = pgTable(
+  "activity_logs",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id),
+    action: text("action").notNull(),
+    entityType: text("entity_type"),
+    entityId: integer("entity_id"),
+    details: text("details"),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("activity_logs_user_id_idx").on(table.userId),
+    index("activity_logs_action_idx").on(table.action),
+    index("activity_logs_created_at_idx").on(table.createdAt),
+  ]
+);
+
+

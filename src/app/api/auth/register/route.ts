@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import argon2 from "argon2";
 import { sendOtpEmail } from "@/lib/mail";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(req: Request) {
   try {
@@ -120,6 +121,16 @@ export async function POST(req: Request) {
       console.error("Failed to send OTP email via Resend:", mailError);
       // We don't fail registration completely if Resend key is missing/testing, but log it
     }
+
+    // Record activity log
+    await logActivity({
+      userId: user.id,
+      action: "USER_REGISTER",
+      entityType: "auth",
+      entityId: user.id,
+      details: `New account registered: ${user.name} (${user.email})`,
+      request: req,
+    });
 
     return NextResponse.json(
       {

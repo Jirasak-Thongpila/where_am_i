@@ -4,6 +4,7 @@ import { getAuthUser } from "@/lib/auth";
 import { deleteFromGCS, uploadToGCS } from "@/lib/gcs";
 import { and, desc, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,6 +89,16 @@ export async function POST(request: NextRequest) {
         imageUrl,
       })
       .returning();
+
+    // Log activity
+    await logActivity({
+      userId: payload.id,
+      action: "CHECKIN_CREATE",
+      entityType: "checkin",
+      entityId: newCheckin.id,
+      details: `Created check-in at ${newCheckin.locationName || `${newCheckin.lat}, ${newCheckin.lng}`}`,
+      request,
+    });
 
     return NextResponse.json(
       {
@@ -276,6 +287,16 @@ export async function PUT(request: NextRequest) {
       .where(and(eq(checkins.id, id), eq(checkins.userId, payload.id)))
       .returning();
 
+    // Log activity
+    await logActivity({
+      userId: payload.id,
+      action: "CHECKIN_UPDATE",
+      entityType: "checkin",
+      entityId: updatedCheckin.id,
+      details: `Updated check-in #${updatedCheckin.id} (${updatedCheckin.locationName || ""})`,
+      request,
+    });
+
     return NextResponse.json(
       {
         message: "Check-in updated successfully",
@@ -339,6 +360,16 @@ export async function DELETE(request: NextRequest) {
     await db
       .delete(checkins)
       .where(and(eq(checkins.id, id), eq(checkins.userId, payload.id)));
+
+    // Log activity
+    await logActivity({
+      userId: payload.id,
+      action: "CHECKIN_DELETE",
+      entityType: "checkin",
+      entityId: id,
+      details: `Deleted check-in #${id} (${existingCheckin.locationName || ""})`,
+      request,
+    });
 
     return NextResponse.json(
       {

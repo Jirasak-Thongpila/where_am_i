@@ -24,6 +24,9 @@ import {
   Check,
   Clock,
   ArrowUpRight,
+  ScrollText,
+  Globe,
+  Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -112,6 +115,24 @@ interface UserListItem {
   checkinsCount: number;
 }
 
+interface ActivityLogItem {
+  id: number;
+  action: string;
+  entityType: string | null;
+  entityId: number | null;
+  details: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    profileImage: string | null;
+    role: string;
+  } | null;
+}
+
 function formatDate(dateStr: string) {
   try {
     const d = new Date(dateStr);
@@ -154,20 +175,25 @@ export default function AdminPage() {
   } | null>(null);
 
   // Dashboard Data State
-  const [activeTab, setActiveTab] = useState<"overview" | "checkins" | "users">(
-    "overview"
-  );
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "checkins" | "users" | "logs"
+  >("overview");
   const [stats, setStats] = useState<StatsData | null>(null);
   const [recentCheckins, setRecentCheckins] = useState<CheckinItem[]>([]);
   const [recentUsers, setRecentUsers] = useState<RecentUserItem[]>([]);
   const [checkins, setCheckins] = useState<CheckinItem[]>([]);
   const [usersList, setUsersList] = useState<UserListItem[]>([]);
+  const [activityLogsList, setActivityLogsList] = useState<ActivityLogItem[]>(
+    []
+  );
   const [loadingData, setLoadingData] = useState(false);
   const [nowTime, setNowTime] = useState<number>(() => Date.now());
 
   // Search & Filters
   const [checkinSearch, setCheckinSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [logSearch, setLogSearch] = useState("");
+  const [actionFilter, setActionFilter] = useState("ALL");
 
   // Modals
   const [previewImage, setPreviewImage] = useState<CheckinItem | null>(null);
@@ -239,6 +265,13 @@ export default function AdminPage() {
       if (usersRes.ok) {
         const data = await usersRes.json();
         setUsersList(data.users || []);
+      }
+
+      // 4. Activity Logs
+      const logsRes = await fetch("/api/admin/activity-logs?limit=100");
+      if (logsRes.ok) {
+        const data = await logsRes.json();
+        setActivityLogsList(data.logs || []);
       }
     } catch (err: unknown) {
       console.error("Fetch admin data error:", err);
@@ -330,6 +363,8 @@ export default function AdminPage() {
         }
         showToast("Check-in log deleted successfully", "success");
         setDeleteTarget(null);
+        // Refresh logs
+        loadDashboardData();
       } else {
         const data = await res.json();
         throw new Error(data.message || "Delete failed");
@@ -365,6 +400,8 @@ export default function AdminPage() {
           `Updated ${user.name}'s role to ${newRole.toUpperCase()}`,
           "success"
         );
+        // Refresh logs
+        loadDashboardData();
       } else {
         const data = await res.json();
         throw new Error(data.message || "Update failed");
@@ -404,6 +441,8 @@ export default function AdminPage() {
           }`,
           "success"
         );
+        // Refresh logs
+        loadDashboardData();
       } else {
         const data = await res.json();
         throw new Error(data.message || "Update failed");
@@ -443,6 +482,77 @@ export default function AdminPage() {
         u.role.toLowerCase().includes(q)
     );
   }, [usersList, userSearch]);
+
+  // Filtered Activity Logs
+  const filteredActivityLogs = useMemo(() => {
+    return activityLogsList.filter((item) => {
+      const matchesAction =
+        actionFilter === "ALL" || item.action === actionFilter;
+      if (!matchesAction) return false;
+
+      if (!logSearch.trim()) return true;
+      const q = logSearch.toLowerCase().trim();
+      return (
+        item.action.toLowerCase().includes(q) ||
+        item.details?.toLowerCase().includes(q) ||
+        item.ipAddress?.toLowerCase().includes(q) ||
+        item.user?.name?.toLowerCase().includes(q) ||
+        item.user?.email?.toLowerCase().includes(q)
+      );
+    });
+  }, [activityLogsList, actionFilter, logSearch]);
+
+  // Helper for Action Badge Colors
+  const renderActionBadge = (action: string) => {
+    switch (action) {
+      case "USER_LOGIN":
+        return (
+          <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-[10px] uppercase font-bold tracking-wider">
+            Login
+          </Badge>
+        );
+      case "USER_REGISTER":
+        return (
+          <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px] uppercase font-bold tracking-wider">
+            Register
+          </Badge>
+        );
+      case "CHECKIN_CREATE":
+        return (
+          <Badge className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20 text-[10px] uppercase font-bold tracking-wider">
+            Check-in
+          </Badge>
+        );
+      case "CHECKIN_UPDATE":
+        return (
+          <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px] uppercase font-bold tracking-wider">
+            Edit
+          </Badge>
+        );
+      case "CHECKIN_DELETE":
+      case "ADMIN_DELETE_CHECKIN":
+        return (
+          <Badge className="bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 text-[10px] uppercase font-bold tracking-wider">
+            Delete
+          </Badge>
+        );
+      case "ADMIN_UPDATE_USER":
+        return (
+          <Badge className="bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20 text-[10px] uppercase font-bold tracking-wider">
+            Admin Change
+          </Badge>
+        );
+      default:
+        return (
+          <Badge
+            variant="secondary"
+            className="text-[10px] uppercase font-bold tracking-wider"
+          >
+            {action}
+          </Badge>
+        );
+    }
+  };
 
   // 1. Loading State
   if (authChecking) {
@@ -546,7 +656,7 @@ export default function AdminPage() {
               <Button
                 type="submit"
                 disabled={loginLoading}
-                className="w-full h-10 font-semibold"
+                className="w-full h-10 font-semibold cursor-pointer"
               >
                 {loginLoading ? (
                   <>
@@ -665,6 +775,22 @@ export default function AdminPage() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab("logs")}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === "logs"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <ScrollText className="w-3.5 h-3.5" />
+              Activity Logs
+              {activityLogsList.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 bg-primary/20 text-primary font-bold rounded-full text-[10px]">
+                  {activityLogsList.length}
+                </span>
+              )}
+            </button>
           </nav>
 
           {/* Right Actions */}
@@ -675,7 +801,7 @@ export default function AdminPage() {
               onClick={loadDashboardData}
               disabled={loadingData}
               title="Refresh Data"
-              className="h-8 w-8"
+              className="h-8 w-8 cursor-pointer"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${loadingData ? "animate-spin" : ""}`}
@@ -704,7 +830,7 @@ export default function AdminPage() {
                 size="icon"
                 onClick={handleLogout}
                 title="Log out"
-                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </Button>
@@ -740,6 +866,14 @@ export default function AdminPage() {
             className="text-xs"
           >
             Users ({usersList.length})
+          </Button>
+          <Button
+            variant={activeTab === "logs" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("logs")}
+            className="text-xs"
+          >
+            Logs ({activityLogsList.length})
           </Button>
         </div>
 
@@ -871,7 +1005,7 @@ export default function AdminPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setActiveTab("checkins")}
-                    className="text-xs text-primary"
+                    className="text-xs text-primary cursor-pointer"
                   >
                     View All <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
@@ -963,7 +1097,7 @@ export default function AdminPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setActiveTab("users")}
-                    className="text-xs text-primary"
+                    className="text-xs text-primary cursor-pointer"
                   >
                     Manage <ChevronRight className="w-3.5 h-3.5 ml-1" />
                   </Button>
@@ -1044,7 +1178,7 @@ export default function AdminPage() {
                 {checkinSearch && (
                   <button
                     onClick={() => setCheckinSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1178,7 +1312,7 @@ export default function AdminPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => setDeleteTarget(item)}
-                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                             title="Delete check-in log"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1220,7 +1354,7 @@ export default function AdminPage() {
                 {userSearch && (
                   <button
                     onClick={() => setUserSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     Clear
                   </button>
@@ -1345,7 +1479,7 @@ export default function AdminPage() {
                                   ? "Demote to standard user"
                                   : "Promote to administrator"
                               }
-                              className="text-[11px] h-7"
+                              className="text-[11px] h-7 cursor-pointer"
                             >
                               {actionLoadingId === u.id ? (
                                 <RefreshCw className="w-3 h-3 animate-spin" />
@@ -1367,11 +1501,165 @@ export default function AdminPage() {
                                   ? "Mark as unverified"
                                   : "Manually verify account"
                               }
-                              className="text-[11px] h-7"
+                              className="text-[11px] h-7 cursor-pointer"
                             >
                               {u.isVerified ? "Unverify" : "Verify"}
                             </Button>
                           </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </Card>
+          </div>
+        )}
+
+        {/* TAB 4: ACTIVITY LOGS (AUDIT TRAIL) */}
+        {activeTab === "logs" && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {/* Action & Filter Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+                  <ScrollText className="w-5 h-5 text-primary" />
+                  System Activity & Audit Logs
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  Complete audit trail of user logins, registrations, check-in
+                  events, and admin operations.
+                </p>
+              </div>
+
+              {/* Action Filter & Search */}
+              <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                  <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <select
+                    value={actionFilter}
+                    onChange={(e) => setActionFilter(e.target.value)}
+                    className="h-9 px-2.5 rounded-md border border-input bg-card text-xs font-medium text-foreground focus:outline-hidden cursor-pointer"
+                  >
+                    <option value="ALL">All Actions</option>
+                    <option value="USER_LOGIN">Logins</option>
+                    <option value="USER_REGISTER">Registrations</option>
+                    <option value="CHECKIN_CREATE">Check-in Created</option>
+                    <option value="CHECKIN_UPDATE">Check-in Updated</option>
+                    <option value="CHECKIN_DELETE">Check-in Deleted</option>
+                    <option value="ADMIN_UPDATE_USER">Admin Role Changes</option>
+                    <option value="ADMIN_DELETE_CHECKIN">Admin Deletions</option>
+                  </select>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search logs, details, IPs..."
+                    value={logSearch}
+                    onChange={(e) => setLogSearch(e.target.value)}
+                    className="pl-9 h-9 text-xs"
+                  />
+                  {logSearch && (
+                    <button
+                      onClick={() => setLogSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Activity Logs Table */}
+            <Card className="border-border/70 shadow-xs overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-40">Timestamp</TableHead>
+                    <TableHead className="w-36">Action</TableHead>
+                    <TableHead className="w-48">Actor / User</TableHead>
+                    <TableHead>Activity Details</TableHead>
+                    <TableHead className="w-32 text-right">Client IP</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredActivityLogs.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="h-32 text-center text-sm text-muted-foreground"
+                      >
+                        No activity logs found matching the filter.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredActivityLogs.map((log) => (
+                      <TableRow key={log.id}>
+                        {/* Timestamp */}
+                        <TableCell className="align-middle">
+                          <div className="flex flex-col">
+                            <span className="text-xs font-semibold text-foreground">
+                              {formatDate(log.createdAt)}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <Clock className="w-3 h-3" />
+                              {formatRelativeTime(log.createdAt, nowTime)}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        {/* Action Badge */}
+                        <TableCell className="align-middle">
+                          {renderActionBadge(log.action)}
+                        </TableCell>
+
+                        {/* User Profile */}
+                        <TableCell className="align-middle">
+                          {log.user ? (
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary shrink-0">
+                                {log.user.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-foreground truncate">
+                                  {log.user.name}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground truncate">
+                                  {log.user.email}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <div className="w-8 h-8 rounded-full bg-muted border border-border flex items-center justify-center text-xs font-mono">
+                                ?
+                              </div>
+                              <span className="text-xs">Anonymous</span>
+                            </div>
+                          )}
+                        </TableCell>
+
+                        {/* Details */}
+                        <TableCell className="align-middle">
+                          <p className="text-xs text-foreground font-medium">
+                            {log.details || "—"}
+                          </p>
+                        </TableCell>
+
+                        {/* Client Info */}
+                        <TableCell className="align-middle text-right">
+                          {log.ipAddress ? (
+                            <div className="inline-flex items-center gap-1 font-mono text-[11px] bg-muted/60 px-2 py-0.5 rounded border border-border/50 text-muted-foreground">
+                              <Globe className="w-3 h-3" />
+                              {log.ipAddress}
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-muted-foreground">
+                              —
+                            </span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -1480,6 +1768,7 @@ export default function AdminPage() {
                 variant="outline"
                 onClick={() => setDeleteTarget(null)}
                 disabled={deleteLoading}
+                className="cursor-pointer"
               >
                 Cancel
               </Button>
@@ -1487,6 +1776,7 @@ export default function AdminPage() {
                 variant="destructive"
                 onClick={handleDeleteCheckin}
                 disabled={deleteLoading}
+                className="cursor-pointer"
               >
                 {deleteLoading ? (
                   <>

@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import argon2 from "argon2";
 import { signJWT } from "@/lib/jwt";
+import { logActivity } from "@/lib/activity";
 
 export async function POST(request: Request) {
   try {
@@ -84,6 +85,16 @@ export async function POST(request: Request) {
       email: user.email,
       name: user.name,
       role: user.role,
+    });
+
+    // Record activity log
+    await logActivity({
+      userId: user.id,
+      action: "USER_LOGIN",
+      entityType: "auth",
+      entityId: user.id,
+      details: `User ${user.name} (${user.email}) logged in successfully as ${user.role}`,
+      request,
     });
 
     const response = NextResponse.json(
