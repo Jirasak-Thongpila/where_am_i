@@ -10,13 +10,11 @@ import {
   Copy,
   Check,
   Search,
-  ExternalLink,
   ChevronDown,
   Sparkles,
   Database,
   Cloud,
   Mail,
-  Play,
   Code2,
   Lock,
   Unlock,
@@ -24,7 +22,6 @@ import {
   Activity,
   Layers,
   Smartphone,
-  Info,
   RefreshCw,
   Send,
 } from "lucide-react";
@@ -34,7 +31,6 @@ import {
   Card,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardContent,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -661,21 +657,6 @@ Future<void> ${ep.id.replace(/-/g, "_")}() async {
     print('Success: \$data');
   }
 }`;
-  };
-
-  const generateJs = (ep: Endpoint) => {
-    return `const response = await fetch('${baseUrl}${ep.path}', {
-  method: '${ep.method}',
-  headers: {
-    ${ep.contentType?.includes("json") ? "'Content-Type': 'application/json',\n    " : ""}${
-      ep.authRequired ? "'Authorization': 'Bearer ' + token,\n  " : ""}},${
-      ep.requestBody && ep.contentType?.includes("json")
-        ? `\n  body: JSON.stringify(${ep.requestBody})`
-        : ""
-    }
-});
-const data = await response.json();
-console.log(data);`;
   };
 
   return (

@@ -97,7 +97,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const updateFields: Record<string, any> = {
+    const updateFields: Record<string, unknown> = {
       updatedAt: new Date(),
     };
 

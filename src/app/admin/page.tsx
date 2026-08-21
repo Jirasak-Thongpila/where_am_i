@@ -1,12 +1,13 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import * as React from "react";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import {
   ShieldCheck,
   MapPin,
   Users,
-  Activity,
   Search,
   ExternalLink,
   RefreshCw,
@@ -17,16 +18,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Eye,
-  SlidersHorizontal,
   ChevronRight,
   Shield,
-  UserCheck,
-  UserX,
   Compass,
-  Calendar,
-  Image as ImageIcon,
-  Key,
-  Layers,
   BarChart3,
   Check,
   Clock,
@@ -42,7 +36,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Table,
   TableHeader,
@@ -97,6 +90,16 @@ interface CheckinItem {
   };
 }
 
+interface RecentUserItem {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  isVerified: boolean;
+  profileImage: string | null;
+  createdAt: string;
+}
+
 interface UserListItem {
   id: number;
   name: string;
@@ -108,6 +111,34 @@ interface UserListItem {
   createdAt: string;
   updatedAt: string;
   checkinsCount: number;
+}
+
+function formatDate(dateStr: string) {
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+function formatRelativeTime(dateStr: string, currentTimestamp: number) {
+  try {
+    const time = new Date(dateStr).getTime();
+    const diffSec = Math.floor((currentTimestamp - time) / 1000);
+    if (diffSec < 60) return "Just now";
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+    return `${Math.floor(diffSec / 86400)}d ago`;
+  } catch {
+    return "";
+  }
 }
 
 export default function AdminPage() {
@@ -130,10 +161,11 @@ export default function AdminPage() {
   );
   const [stats, setStats] = useState<StatsData | null>(null);
   const [recentCheckins, setRecentCheckins] = useState<CheckinItem[]>([]);
-  const [recentUsers, setRecentUsers] = useState<any[]>([]);
+  const [recentUsers, setRecentUsers] = useState<RecentUserItem[]>([]);
   const [checkins, setCheckins] = useState<CheckinItem[]>([]);
   const [usersList, setUsersList] = useState<UserListItem[]>([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [nowTime, setNowTime] = useState<number>(() => Date.now());
 
   // Search & Filters
   const [checkinSearch, setCheckinSearch] = useState("");
@@ -154,36 +186,39 @@ export default function AdminPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Check auth session
-  const checkAuth = useCallback(async () => {
-    try {
-      setAuthChecking(true);
-      const res = await fetch("/api/auth/me", { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user && data.user.role === "admin") {
-          setCurrentUser(data.user);
+  // Initial Auth Check Effect
+  useEffect(() => {
+    let isMounted = true;
+    async function initAuth() {
+      try {
+        const res = await fetch("/api/auth/me", { cache: "no-store" });
+        if (!isMounted) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user && data.user.role === "admin") {
+            setCurrentUser(data.user);
+          } else {
+            setCurrentUser(null);
+          }
         } else {
           setCurrentUser(null);
         }
-      } else {
-        setCurrentUser(null);
+      } catch {
+        if (isMounted) setCurrentUser(null);
+      } finally {
+        if (isMounted) setAuthChecking(false);
       }
-    } catch {
-      setCurrentUser(null);
-    } finally {
-      setAuthChecking(false);
     }
+    initAuth();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  // Fetch Dashboard Data
-  const fetchData = useCallback(async () => {
-    if (!currentUser) return;
+  // Fetch Dashboard Data Function
+  const loadDashboardData = React.useCallback(async () => {
     setLoadingData(true);
+    setNowTime(Date.now());
     try {
       // 1. Stats
       const statsRes = await fetch("/api/admin/stats");
@@ -207,19 +242,27 @@ export default function AdminPage() {
         const data = await usersRes.json();
         setUsersList(data.users || []);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Fetch admin data error:", err);
       showToast("Failed to load some dashboard data", "error");
     } finally {
       setLoadingData(false);
     }
-  }, [currentUser]);
+  }, []);
 
+  // Load data when currentUser is authenticated
   useEffect(() => {
-    if (currentUser) {
-      fetchData();
+    if (!currentUser) return;
+    let isMounted = true;
+    async function fetchInitial() {
+      if (!isMounted) return;
+      await loadDashboardData();
     }
-  }, [currentUser, fetchData]);
+    fetchInitial();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, loadDashboardData]);
 
   // Handle Admin Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -249,8 +292,9 @@ export default function AdminPage() {
 
       setCurrentUser(data.user);
       showToast(`Welcome back, ${data.user.name}!`, "success");
-    } catch (err: any) {
-      setLoginError(err.message || "Login failed");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Login failed";
+      setLoginError(message);
     } finally {
       setLoginLoading(false);
     }
@@ -276,8 +320,10 @@ export default function AdminPage() {
       } else {
         throw new Error(data.message || "Failed to seed admin");
       }
-    } catch (err: any) {
-      showToast(err.message || "Failed to create default admin", "error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to create default admin";
+      showToast(message, "error");
     } finally {
       setSeedLoading(false);
     }
@@ -319,8 +365,10 @@ export default function AdminPage() {
         const data = await res.json();
         throw new Error(data.message || "Delete failed");
       }
-    } catch (err: any) {
-      showToast(err.message || "Failed to delete log", "error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete log";
+      showToast(message, "error");
     } finally {
       setDeleteLoading(false);
     }
@@ -352,8 +400,10 @@ export default function AdminPage() {
         const data = await res.json();
         throw new Error(data.message || "Update failed");
       }
-    } catch (err: any) {
-      showToast(err.message || "Failed to update role", "error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update role";
+      showToast(message, "error");
     } finally {
       setActionLoadingId(null);
     }
@@ -389,8 +439,10 @@ export default function AdminPage() {
         const data = await res.json();
         throw new Error(data.message || "Update failed");
       }
-    } catch (err: any) {
-      showToast(err.message || "Failed to update status", "error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update status";
+      showToast(message, "error");
     } finally {
       setActionLoadingId(null);
     }
@@ -422,36 +474,6 @@ export default function AdminPage() {
         u.role.toLowerCase().includes(q)
     );
   }, [usersList, userSearch]);
-
-  // Format Helpers
-  const formatDate = (dateStr: string) => {
-    try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
-  const getRelativeTime = (dateStr: string) => {
-    try {
-      const now = Date.now();
-      const time = new Date(dateStr).getTime();
-      const diffSec = Math.floor((now - time) / 1000);
-      if (diffSec < 60) return "Just now";
-      if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-      if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-      return `${Math.floor(diffSec / 86400)}d ago`;
-    } catch {
-      return "";
-    }
-  };
 
   // 1. Loading State
   if (authChecking) {
@@ -598,12 +620,12 @@ export default function AdminPage() {
             </Button>
 
             <div className="text-center pt-2">
-              <a
+              <Link
                 href="/"
                 className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
               >
                 ← Back to API Playground
-              </a>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -707,7 +729,7 @@ export default function AdminPage() {
             <Button
               variant="outline"
               size="icon"
-              onClick={fetchData}
+              onClick={loadDashboardData}
               disabled={loadingData}
               title="Refresh Data"
               className="h-8 w-8"
@@ -793,16 +815,14 @@ export default function AdminPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <a
+                <Link
                   href="/"
-                  target="_blank"
-                  rel="noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium px-3 py-1.5 rounded-md border border-border hover:bg-muted transition-colors"
                 >
                   <Compass className="w-3.5 h-3.5" />
                   API Documentation
                   <ExternalLink className="w-3 h-3 ml-0.5" />
-                </a>
+                </Link>
               </div>
             </div>
 
@@ -953,14 +973,18 @@ export default function AdminPage() {
                                 </p>
                               </div>
                               <p className="text-[11px] text-muted-foreground truncate">
-                                By {item.user.name} • {item.address || `${item.lat.toFixed(4)}, ${item.lng.toFixed(4)}`}
+                                By {item.user.name} •{" "}
+                                {item.address ||
+                                  `${item.lat.toFixed(4)}, ${item.lng.toFixed(
+                                    4
+                                  )}`}
                               </p>
                             </div>
                           </div>
 
                           <div className="text-right shrink-0">
                             <span className="text-[11px] font-medium text-muted-foreground">
-                              {getRelativeTime(item.createdAt)}
+                              {formatRelativeTime(item.createdAt, nowTime)}
                             </span>
                             <div className="mt-0.5">
                               <a
@@ -969,7 +993,8 @@ export default function AdminPage() {
                                 rel="noreferrer"
                                 className="inline-flex items-center text-[10px] text-primary hover:underline"
                               >
-                                Maps <ArrowUpRight className="w-2.5 h-2.5 ml-0.5" />
+                                Maps{" "}
+                                <ArrowUpRight className="w-2.5 h-2.5 ml-0.5" />
                               </a>
                             </div>
                           </div>
@@ -1036,7 +1061,7 @@ export default function AdminPage() {
                               {u.role}
                             </Badge>
                             <span className="text-[10px] text-muted-foreground">
-                              {getRelativeTime(u.createdAt)}
+                              {formatRelativeTime(u.createdAt, nowTime)}
                             </span>
                           </div>
                         </div>
@@ -1089,12 +1114,12 @@ export default function AdminPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[170px]">Timestamp</TableHead>
-                    <TableHead className="w-[180px]">User</TableHead>
+                    <TableHead className="w-44">Timestamp</TableHead>
+                    <TableHead className="w-48">User</TableHead>
                     <TableHead>Location & Address</TableHead>
-                    <TableHead className="w-[150px]">Coordinates</TableHead>
-                    <TableHead className="w-[100px] text-center">Photo</TableHead>
-                    <TableHead className="w-[80px] text-right">Action</TableHead>
+                    <TableHead className="w-40">Coordinates</TableHead>
+                    <TableHead className="w-24 text-center">Photo</TableHead>
+                    <TableHead className="w-20 text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1118,7 +1143,7 @@ export default function AdminPage() {
                             </span>
                             <span className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
                               <Clock className="w-3 h-3" />
-                              {getRelativeTime(item.createdAt)}
+                              {formatRelativeTime(item.createdAt, nowTime)}
                             </span>
                           </div>
                         </TableCell>
@@ -1265,17 +1290,15 @@ export default function AdminPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[60px]">ID</TableHead>
+                    <TableHead className="w-16">ID</TableHead>
                     <TableHead>User Profile</TableHead>
-                    <TableHead className="w-[120px]">Role</TableHead>
-                    <TableHead className="w-[140px]">Status</TableHead>
-                    <TableHead className="w-[110px] text-center">
+                    <TableHead className="w-32">Role</TableHead>
+                    <TableHead className="w-36">Status</TableHead>
+                    <TableHead className="w-28 text-center">
                       Check-ins
                     </TableHead>
-                    <TableHead className="w-[160px]">Registered</TableHead>
-                    <TableHead className="w-[180px] text-right">
-                      Actions
-                    </TableHead>
+                    <TableHead className="w-40">Registered</TableHead>
+                    <TableHead className="w-44 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
