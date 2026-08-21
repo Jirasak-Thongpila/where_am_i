@@ -35,6 +35,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
+    "@esbuild/win32-x64": "^0.28.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

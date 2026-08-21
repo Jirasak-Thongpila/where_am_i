@@ -6,6 +6,7 @@ export interface AuthUser {
   id: number;
   email: string;
   name: string;
+  role?: string;
 }
 
 export async function getAuthUser(request: NextRequest): Promise<AuthUser | null> {
@@ -25,4 +26,12 @@ export async function getAuthUser(request: NextRequest): Promise<AuthUser | null
   // 3. ตรวจสอบ JWT
   const payload = await verifyJWT<AuthUser>(token);
   return payload;
+}
+
+export async function getAdminUser(request: NextRequest): Promise<AuthUser | null> {
+  const user = await getAuthUser(request);
+  if (!user || user.role !== "admin") {
+    return null;
+  }
+  return user;
 }

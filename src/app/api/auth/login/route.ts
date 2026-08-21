@@ -47,6 +47,7 @@ export async function POST(request: Request) {
         email: users.email,
         name: users.name,
         password: users.password,
+        role: users.role,
         bio: users.bio,
         profileImage: users.profileImage,
         coverImage: users.coverImage,
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
       id: user.id,
       email: user.email,
       name: user.name,
+      role: user.role,
     });
 
     const response = NextResponse.json(
@@ -91,6 +93,7 @@ export async function POST(request: Request) {
           id: user.id,
           email: user.email,
           name: user.name,
+          role: user.role,
           bio: user.bio,
           profileImage: user.profileImage,
           coverImage: user.coverImage,

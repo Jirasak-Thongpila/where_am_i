@@ -711,6 +711,14 @@ console.log(data);`;
               <span>Systems Operational</span>
             </div>
 
+            <a
+              href="/admin"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span>Admin Console</span>
+            </a>
+
             <Button
               variant="outline"
               size="sm"
