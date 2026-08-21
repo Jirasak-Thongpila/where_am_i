@@ -463,17 +463,42 @@ const endpoints: Endpoint[] = [
     path: "/api/health",
     category: "system",
     title: "Server Health Check",
-    description: "ตรวจสอบสถานะการทำงานของ API Server และการเชื่อมต่อฐานข้อมูล",
+    description: "ตรวจสอบสถานะการทำงานของ API Server",
     authRequired: false,
     responseBody: JSON.stringify(
       {
         status: "ok",
-        uptime: "99.98%",
-        timestamp: "2026-08-20T15:20:00.000Z",
       },
       null,
       2
     ),
+  },
+  {
+    id: "system-test-db",
+    method: "GET",
+    path: "/api/test-db",
+    category: "system",
+    title: "Test Database Connection",
+    description: "ทดสอบการเชื่อมต่อ Neon PostgreSQL Database",
+    authRequired: false,
+    responseBody: JSON.stringify(
+      {
+        message: "database connection success",
+        users: [],
+      },
+      null,
+      2
+    ),
+  },
+  {
+    id: "system-images",
+    method: "GET",
+    path: "/api/images/{path}",
+    category: "system",
+    title: "Image Proxy (GCS)",
+    description: "สตรีมและแสดงผลไฟล์รูปภาพจาก Google Cloud Storage พร้อมตั้งค่า Caching",
+    authRequired: false,
+    responseBody: "Binary image stream (image/jpeg, image/png, image/webp)",
   },
 ];
 

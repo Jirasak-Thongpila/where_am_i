@@ -119,6 +119,9 @@ where_am_i/
 │   │   │   │   └── logout/route.ts          # POST /api/auth/logout (ออกจากระบบ)
 │   │   │   ├── checking/
 │   │   │   │   └── route.ts                 # GET, POST, PUT, DELETE /api/checking (จัดการ Check-in)
+│   │   │   ├── images/
+│   │   │   │   └── [...path]/
+│   │   │   │       └── route.ts             # GET /api/images/[...path] (Image Proxy ให้บริการรูปภาพจาก GCS)
 │   │   │   ├── health/
 │   │   │   │   └── route.ts                 # GET /api/health (Health Check)
 │   │   │   └── test-db/
@@ -210,6 +213,7 @@ erDiagram
 | **Check-in** | `GET` | `/api/checking` | ❌/✅ | ดึงรายการเช็คอินทั้งหมด (หรือ `?my=true` สำหรับของตนเอง) |
 | **Check-in** | `PUT` | `/api/checking` | ✅ | แก้ไขข้อมูลเช็คอิน/เปลี่ยนรูปภาพใหม่ (พร้อมลบรูปเดิมใน GCS) |
 | **Check-in** | `DELETE` | `/api/checking?id={id}` | ✅ | ลบโพสต์เช็คอินและลบรูปภาพออกจาก GCS |
+| **Media** | `GET` | `/api/images/{path}` | ❌ | พร็อกซีสตรีมรูปภาพจาก Google Cloud Storage พร้อม Cache Control |
 | **System** | `GET` | `/api/health` | ❌ | ตรวจสอบสถานะการทำงานของเซิร์ฟเวอร์ (Health Check) |
 | **System** | `GET` | `/api/test-db` | ❌ | ทดสอบการเชื่อมต่อ Database Neon PostgreSQL |
 
@@ -589,6 +593,37 @@ erDiagram
   {
     "message": "database connection success",
     "users": []
+  }
+  ```
+
+---
+
+### 🖼️ 4. Media & Image Proxy APIs (`/api/images/*`)
+
+#### 4.1 ดึงและแสดงผลรูปภาพจาก Google Cloud Storage (Get / Proxy Image)
+* **Endpoint**: `GET /api/images/{path}`
+* **คำอธิบาย**: ดึงไฟล์รูปภาพจาก Google Cloud Storage (GCS) ผ่านเซิร์ฟเวอร์ Backend เพื่อแสดงผลบนแอปพลิเคชันหรือเว็บ พร้อมแนบ Header Caching เพื่อประสิทธิภาพสูงสุด
+* **ตัวอย่างการเรียกใช้งาน**:
+  - รูปโปรไฟล์: `GET /api/images/profiles/1_1787058244392_8f9g12.jpg`
+  - รูปเช็คอิน: `GET /api/images/checkins/1_1787058244392_79gjqv.jpg`
+* **URL Parameters**:
+  - `path` *(string, required)*: Path ของไฟล์ใน GCS Bucket (เช่น `profiles/...` หรือ `checkins/...`)
+* **Headers**: ไม่จำเป็นต้องส่ง Token (Public Access)
+* **Response Headers**:
+  - `Content-Type`: `image/jpeg` / `image/png` / `image/webp` (ตามประเภทไฟล์รูปภาพ)
+  - `Cache-Control`: `public, max-age=31536000, immutable`
+* **Response (200 OK)**:
+  Binary Data Stream ของไฟล์รูปภาพ
+* **Response (400 Bad Request)**:
+  ```json
+  {
+    "message": "File path is required"
+  }
+  ```
+* **Response (404 Not Found)**:
+  ```json
+  {
+    "message": "Image not found"
   }
   ```
 
